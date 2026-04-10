@@ -1,0 +1,173 @@
+version: 2
+
+sources:
+  - name: raw
+    database: REGULATORY_DB
+    schema: raw
+    description: "Raw source tables loaded from CSV files via Snowflake COPY INTO"
+    tables:
+      - name: loan_portfolio
+        description: "Raw loan portfolio data from source systems"
+        columns:
+          - name: loan_id
+            tests: [not_null, unique]
+          - name: counterparty_id
+            tests: [not_null]
+          - name: exposure_amount
+            tests:
+              - not_null
+              - dbt_utils.expression_is_true:
+                  expression: ">= 0"
+          - name: pd_estimate
+            tests:
+              - not_null
+              - dbt_utils.expression_is_true:
+                  expression: "between 0 and 1"
+          - name: lgd_estimate
+            tests:
+              - not_null
+              - dbt_utils.expression_is_true:
+                  expression: "between 0 and 1"
+          - name: reporting_date
+            tests: [not_null]
+
+      - name: counterparties
+        description: "Counterparty master data including KYC status"
+        columns:
+          - name: counterparty_id
+            tests: [not_null, unique]
+          - name: kyc_status
+            tests:
+              - accepted_values:
+                  values: ["Verified", "Pending", "Failed"]
+
+      - name: rwa_components
+        description: "Basel III RWA calculation components per loan"
+        columns:
+          - name: loan_id
+            tests: [not_null]
+          - name: total_rwa
+            tests:
+              - not_null
+              - dbt_utils.expression_is_true:
+                  expression: ">= 0"
+
+      - name: capital_components
+        description: "Entity-level capital ratios per reporting period"
+        columns:
+          - name: entity_id
+            tests: [not_null]
+          - name: cet1_ratio
+            tests:
+              - not_null
+              - dbt_utils.expression_is_true:
+                  expression: "> 0"
+
+      - name: stress_scenarios
+        description: "CCAR stress test scenarios — Baseline, Adverse, Severely Adverse"
+        columns:
+          - name: scenario_id
+            tests: [not_null, unique]
+          - name: scenario_name
+            tests:
+              - accepted_values:
+                  values: ["Baseline", "Adverse", "Severely Adverse"]
+          - name: stressed_pd
+            tests:
+              - dbt_utils.expression_is_true:
+                  expression: "between 0 and 1"
+
+models:
+  - name: stg_loan_portfolio
+    description: "Cleaned and typed loan portfolio — source of truth for credit risk"
+    columns:
+      - name: loan_id
+        tests: [not_null, unique]
+      - name: exposure_amount
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: pd_estimate
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "between 0 and 1"
+
+  - name: stg_counterparties
+    description: "Counterparty master data — sanctioned entities already excluded"
+    columns:
+      - name: counterparty_id
+        tests: [not_null, unique]
+      - name: is_sanctioned
+        description: "Always false in staging — sanctioned entities filtered at source"
+        tests:
+          - accepted_values:
+              values: [false]
+
+  - name: int_credit_risk_enriched
+    description: "Enriched credit risk view — loans joined with counterparties and RWA"
+    columns:
+      - name: loan_id
+        tests: [not_null, unique]
+      - name: expected_loss
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+      - name: rating_bucket
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - "Investment Grade — High"
+                - "Investment Grade — Upper Mid"
+                - "Investment Grade — Lower Mid"
+                - "Sub-Investment Grade — High"
+                - "Sub-Investment Grade — Low"
+                - "Unrated"
+
+  - name: fct_basel3_rwa_report
+    description: "Basel III RWA regulatory submission table — quarterly"
+    columns:
+      - name: reporting_date
+        tests: [not_null]
+      - name: total_rwa
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+      - name: total_capital_requirement
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+
+  - name: fct_capital_adequacy
+    description: "Capital adequacy ratios vs Basel III minimums — entity level"
+    columns:
+      - name: entity_id
+        tests: [not_null]
+      - name: cet1_ratio
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: "> 0"
+      - name: capital_adequacy_status
+        tests:
+          - accepted_values:
+              values:
+                - "Below Minimum — Regulatory Action Required"
+                - "Within Buffer — Restricted Distributions"
+                - "Adequate — Monitor Closely"
+                - "Well Capitalised"
+
+  - name: fct_ccar_stress_test
+    description: "CCAR stress test results — three scenario comparison"
+    columns:
+      - name: scenario_name
+        tests:
+          - accepted_values:
+              values: ["Baseline", "Adverse", "Severely Adverse"]
+      - name: total_expected_loss
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"

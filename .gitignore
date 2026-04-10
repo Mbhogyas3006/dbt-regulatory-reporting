@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.env
+venv/
+.venv/
+
+# dbt
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+profiles.yml
+
+# Great Expectations
+great_expectations/results/
+great_expectations/.ge_store_backend_id
+
+# Secrets
+*.pem
+*.key
+secrets/
+
+# Data (generated — never commit real regulatory data)
+data/*.csv

@@ -1,0 +1,48 @@
+name: 'regulatory_reporting'
+version: '1.0.0'
+config-version: 2
+
+profile: 'regulatory_reporting'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  regulatory_reporting:
+    staging:
+      +materialized: view
+      +schema: staging
+      +tags: ["staging"]
+    intermediate:
+      +materialized: table
+      +schema: intermediate
+      +tags: ["intermediate"]
+    marts:
+      +materialized: table
+      credit:
+        +schema: credit_risk
+        +tags: ["credit", "regulatory"]
+      capital:
+        +schema: capital
+        +tags: ["capital", "basel3", "regulatory"]
+      liquidity:
+        +schema: liquidity
+        +tags: ["liquidity", "regulatory"]
+
+vars:
+  reporting_date: '2024-03-31'
+  cet1_minimum_ratio: 4.5
+  tier1_minimum_ratio: 6.0
+  total_capital_minimum_ratio: 8.0
+  capital_conservation_buffer: 2.5
+  lcr_minimum: 100.0
+  nsfr_minimum: 100.0
